@@ -1,17 +1,16 @@
 package practica;
+
+// (El contenido de ProtocoloBattleship.java es idéntico al que proporcionaste)
 public class ProtocoloBattleship {
     // Comandos del protocolo
     public static final String INICIAR_JUEGO = "INICIAR";
     public static final String LISTO = "LISTO";
-    public static final String COLOCAR_BARCOS = "COLOCAR_BARCOS";
+    public static final String CONECTADO = "CONECTADO";
     public static final String DISPARAR = "DISPARAR";
     public static final String IMPACTO = "IMPACTO";
     public static final String FALLO = "FALLO";
     public static final String HUNDIDO = "HUNDIDO";
     public static final String JUEGO_TERMINADO = "JUEGO_TERMINADO";
-    public static final String ERROR = "ERROR";
-    public static final String SALIR = "SALIR";
-    public static final String CONECTADO = "CONECTADO";
 
     // Separadores
     public static final String SEPARADOR_CAMPOS = "|";

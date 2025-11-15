@@ -1,9 +1,9 @@
 package practica;
-// JuegoBattleship.java
+
 import java.util.*;
 
 public class JuegoBattleship {
-    private static final int TAMANIO_TABLERO = 10;
+    public static final int TAMANIO_TABLERO = 10;
     private char[][] tableroPropio;
     private char[][] tableroEnemigo;
     private Map<String, Integer> barcos;
@@ -33,8 +33,8 @@ public class JuegoBattleship {
     private void inicializarTableros() {
         for (int i = 0; i < TAMANIO_TABLERO; i++) {
             for (int j = 0; j < TAMANIO_TABLERO; j++) {
-                tableroPropio[i][j] = '~'; // Agua
-                tableroEnemigo[i][j] = '?'; // Desconocido
+                tableroPropio[i][j] = '~';
+                tableroEnemigo[i][j] = '?';
             }
         }
     }
@@ -88,29 +88,24 @@ public class JuegoBattleship {
     }
     
     public boolean recibirDisparo(int fila, int columna) {
-        // Verificar si ya fue disparado aquí
         if (tableroPropio[fila][columna] == 'X' || tableroPropio[fila][columna] == 'O') {
-            return false; // Ya fue disparado aquí
+            return false; 
         }
         
         if (tableroPropio[fila][columna] != '~') {
-            // ¡Impacto! - encontrar qué barco fue golpeado
             char caracterBarco = tableroPropio[fila][columna];
             String tipoBarco = obtenerTipoBarcoDesdeCaracter(caracterBarco);
             
-            // VERIFICACIÓN DE SEGURIDAD AÑADIDA
             if (impactosPorBarco.containsKey(tipoBarco)) {
                 impactosPorBarco.put(tipoBarco, impactosPorBarco.get(tipoBarco) + 1);
             } else {
-                // Si el barco no está en el mapa, lo agregamos
-                System.out.println("Advertencia: Barco no registrado '" + tipoBarco + "' encontrado. Registrando...");
                 impactosPorBarco.put(tipoBarco, 1);
             }
             
-            tableroPropio[fila][columna] = 'X'; // Barco impactado
+            tableroPropio[fila][columna] = 'X';
             return true;
         } else {
-            tableroPropio[fila][columna] = 'O'; // Agua impactada
+            tableroPropio[fila][columna] = 'O';
             return false;
         }
     }
@@ -130,14 +125,17 @@ public class JuegoBattleship {
     }
     
     public String obtenerTipoBarcoEn(int fila, int columna) {
-        char c = tableroPropio[fila][columna];
-        // Si es un impacto previo, buscar en la posición original
-        if (c == 'X') {
-            // En un juego real necesitarías guardar el tipo de barco original
-            // Por ahora retornamos "DESCONOCIDO"
+        for(String barco : barcos.keySet()) {
+            if (barco.charAt(0) == tableroPropio[fila][columna]) {
+                return barco;
+            }
+        }
+
+        if (tableroPropio[fila][columna] == 'X') {
             return "DESCONOCIDO";
         }
-        return obtenerTipoBarcoDesdeCaracter(c);
+        
+        return obtenerTipoBarcoDesdeCaracter(tableroPropio[fila][columna]);
     }
     
     private String obtenerTipoBarcoDesdeCaracter(char c) {
@@ -152,8 +150,7 @@ public class JuegoBattleship {
     }
     
     public boolean estaBarcoHundido(String tipoBarco) {
-        // VERIFICACIÓN DE SEGURIDAD AÑADIDA
-        if (!impactosPorBarco.containsKey(tipoBarco) || !barcos.containsKey(tipoBarco)) {
+        if ("DESCONOCIDO".equals(tipoBarco) || !impactosPorBarco.containsKey(tipoBarco) || !barcos.containsKey(tipoBarco)) {
             return false;
         }
         
@@ -171,40 +168,25 @@ public class JuegoBattleship {
         return true;
     }
     
-    public void mostrarTableroPropio() {
-        System.out.println("\n=== TU TABLERO ===");
-        mostrarTablero(tableroPropio);
-        
-        // Mostrar estado de barcos
-        System.out.println("\nEstado de tus barcos:");
-        for (String barco : barcos.keySet()) {
-            int impactos = impactosPorBarco.getOrDefault(barco, 0);
-            int tamanio = barcos.get(barco);
-            String estado = (impactos >= tamanio) ? "HUNDIDO" : impactos + "/" + tamanio;
-            System.out.println("  " + barco + ": " + estado);
-        }
+    // --- MÉTODOS REMOVIDOS ---
+    // public void mostrarTableroPropio() { ... }
+    // public void mostrarTableroEnemigo() { ... }
+    // private void mostrarTablero(char[][] tablero) { ... }
+    
+    // --- NUEVOS GETTERS ---
+    public char[][] getTableroPropio() {
+        return tableroPropio;
     }
     
-    public void mostrarTableroEnemigo() {
-        System.out.println("\n=== TABLERO ENEMIGO ===");
-        mostrarTablero(tableroEnemigo);
+    public char[][] getTableroEnemigo() {
+        return tableroEnemigo;
     }
     
-    private void mostrarTablero(char[][] tablero) {
-        System.out.print("  ");
-        for (int i = 0; i < TAMANIO_TABLERO; i++) {
-            System.out.print(i + " ");
-        }
-        System.out.println();
-        
-        for (int i = 0; i < TAMANIO_TABLERO; i++) {
-            System.out.print(i + " ");
-            for (int j = 0; j < TAMANIO_TABLERO; j++) {
-                System.out.print(tablero[i][j] + " ");
-            }
-            System.out.println();
-        }
-        
-        System.out.println("\nLeyenda: ~=Agua, ?=Desconocido, X=Impacto, O=Fallo, Letras=Barcos");
+    public Map<String, Integer> getBarcos() {
+        return barcos;
+    }
+    
+    public Map<String, Integer> getImpactosPorBarco() {
+        return impactosPorBarco;
     }
 }

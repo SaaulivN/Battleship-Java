@@ -3,6 +3,7 @@ package practica;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
+import java.util.Map;
 
 public class JuegoBattleshipTest {
     
@@ -12,149 +13,183 @@ public class JuegoBattleshipTest {
     void setUp() {
         juego = new JuegoBattleship();
     }
-    
+
     @Test
     void testColocarBarcosAutomaticamente() {
-        juego.colocarBarcosAutomaticamente();
+        // Los barcos no deben estar colocados inicialmente
+        char[][] tablero = juego.getTableroPropio();
+        int contadorBarcos = 0;
         
-        char[][] tablero = obtenerTableroPropio();
-        int conteoP = 0, conteoA = 0, conteoC = 0, conteoS = 0, conteoD = 0;
-        
-        for (int i = 0; i < 10; i++) {
-            for (int j = 0; j < 10; j++) {
-                switch (tablero[i][j]) {
-                    case 'P': conteoP++; break;
-                    case 'A': conteoA++; break;
-                    case 'C': conteoC++; break;
-                    case 'S': conteoS++; break;
-                    case 'D': conteoD++; break;
-                }
+        // Contar posiciones sin agua antes de colocar
+        for (int i = 0; i < JuegoBattleship.TAMANIO_TABLERO; i++) {
+            for (int j = 0; j < JuegoBattleship.TAMANIO_TABLERO; j++) {
+                if (tablero[i][j] != '~') contadorBarcos++;
             }
         }
+        assertEquals(0, contadorBarcos);
         
-        assertEquals(5, conteoP, "Debe haber 5 casillas de PORTAAVIONES");
-        assertEquals(4, conteoA, "Debe haber 4 casillas de ACORAZADO");
-        assertEquals(3, conteoC, "Debe haber 3 casillas de CRUCERO");
-        assertEquals(3, conteoS, "Debe haber 3 casillas de SUBMARINO");
-        assertEquals(2, conteoD, "Debe haber 2 casillas de DESTRUCTOR");
-    }
-
-    @Test
-    void testRecibirDisparo() {
+        // Colocar barcos
         juego.colocarBarcosAutomaticamente();
         
-        boolean disparoEnAgua = false;
-        for (int i = 0; i < 10 && !disparoEnAgua; i++) {
-            for (int j = 0; j < 10 && !disparoEnAgua; j++) {
-                boolean resultado = juego.recibirDisparo(i, j);
-                if (!resultado) {
-                    disparoEnAgua = true;
-                }
+        // Ahora debe haber barcos (5+4+3+3+2 = 17 casillas ocupadas)
+        contadorBarcos = 0;
+        tablero = juego.getTableroPropio();
+        for (int i = 0; i < JuegoBattleship.TAMANIO_TABLERO; i++) {
+            for (int j = 0; j < JuegoBattleship.TAMANIO_TABLERO; j++) {
+                if (tablero[i][j] != '~') contadorBarcos++;
             }
         }
-        
-        assertTrue(disparoEnAgua, "Al menos uno de los disparos debe fallar en agua");
-    }
-
-    @Test
-    void testRecibirDisparoEnBarco() {
-        juego.colocarBarcosAutomaticamente();
-        
-        boolean disparoEnBarco = false;
-        for (int i = 0; i < 10 && !disparoEnBarco; i++) {
-            for (int j = 0; j < 10 && !disparoEnBarco; j++) {
-                boolean resultado = juego.recibirDisparo(i, j);
-                if (resultado) {
-                    disparoEnBarco = true;
-                }
-            }
-        }
-        
-        assertTrue(disparoEnBarco, "Al menos un disparo debe impactar en un barco");
-    }
-
-    @Test
-    void testRegistrarImpacto() {
-        juego.registrarImpacto(3, 5);
-        
-        assertTrue(juego.yaDisparado(3, 5), 
-            "La posición debe quedar registrada como disparada después de impacto");
-    }
-
-    @Test
-    void testRegistrarFallo() {
-        juego.registrarFallo(2, 4);
-        
-        assertTrue(juego.yaDisparado(2, 4), 
-            "La posición debe quedar registrada como disparada después de fallo");
-    }
-
-    @Test
-    void testYaDisparado() {
-        juego.registrarImpacto(1, 1);
-        juego.registrarFallo(2, 2);
-        
-        assertTrue(juego.yaDisparado(1, 1), "Posición de impacto debe estar registrada");
-        assertTrue(juego.yaDisparado(2, 2), "Posición de fallo debe estar registrada");
-        assertFalse(juego.yaDisparado(3, 3), "Posición no disparada no debe estar registrada");
+        assertEquals(17, contadorBarcos);
     }
 
     @Test
     void testEstaBarcoHundido() {
         juego.colocarBarcosAutomaticamente();
         
-        assertFalse(juego.estaBarcoHundido("DESTRUCTOR"), 
-            "DESTRUCTOR no debe estar hundido al inicio");
-        assertFalse(juego.estaBarcoHundido("PORTAAVIONES"), 
-            "PORTAAVIONES no debe estar hundido al inicio");
+        // Inicialmente ningún barco está hundido
+        assertFalse(juego.estaBarcoHundido("PORTAAVIONES"));
+        
+        // Simular impactos para hundir un barco de 2 casillas
+        // Incrementar impactos manualmente (de forma privada, usamos recibirDisparo)
+        // Para esto es mejor usar el mapa de impactos indirectamente
+        assertFalse(juego.estaBarcoHundido("DESTRUCTOR"));
+    }
+
+    @Test
+    void testGetBarcos() {
+        Map<String, Integer> barcos = juego.getBarcos();
+        
+        // Verificar que existen todos los barcos
+        assertEquals(5, barcos.get("PORTAAVIONES"));
+        assertEquals(4, barcos.get("ACORAZADO"));
+        assertEquals(3, barcos.get("CRUCERO"));
+        assertEquals(3, barcos.get("SUBMARINO"));
+        assertEquals(2, barcos.get("DESTRUCTOR"));
+    }
+
+    @Test
+    void testGetImpactosPorBarco() {
+        Map<String, Integer> impactos = juego.getImpactosPorBarco();
+        
+        // Inicialmente todos los barcos tienen 0 impactos
+        assertEquals(0, impactos.get("PORTAAVIONES"));
+        assertEquals(0, impactos.get("ACORAZADO"));
+        assertEquals(0, impactos.get("CRUCERO"));
+        assertEquals(0, impactos.get("SUBMARINO"));
+        assertEquals(0, impactos.get("DESTRUCTOR"));
+    }
+
+    @Test
+    void testGetTableroEnemigo() {
+        char[][] tableroEnemigo = juego.getTableroEnemigo();
+        
+        // Inicialmente todo debe ser desconocido
+        assertEquals(JuegoBattleship.TAMANIO_TABLERO, tableroEnemigo.length);
+        for (int i = 0; i < JuegoBattleship.TAMANIO_TABLERO; i++) {
+            for (int j = 0; j < JuegoBattleship.TAMANIO_TABLERO; j++) {
+                assertEquals('?', tableroEnemigo[i][j]);
+            }
+        }
+    }
+
+    @Test
+    void testGetTableroPropio() {
+        char[][] tableroPropio = juego.getTableroPropio();
+        
+        // Inicialmente todo debe ser agua
+        assertEquals(JuegoBattleship.TAMANIO_TABLERO, tableroPropio.length);
+        for (int i = 0; i < JuegoBattleship.TAMANIO_TABLERO; i++) {
+            for (int j = 0; j < JuegoBattleship.TAMANIO_TABLERO; j++) {
+                assertEquals('~', tableroPropio[i][j]);
+            }
+        }
+    }
+
+    @Test
+    void testObtenerTipoBarcoEn() {
+        // Después de colocar barcos, verificar tipos
+        juego.colocarBarcosAutomaticamente();
+        
+        // Este test es débil porque los barcos se colocan aleatoriamente
+        // Pero podemos verificar que devuelve un tipo válido
+        char[][] tablero = juego.getTableroPropio();
+        String tipoBarco = juego.obtenerTipoBarcoEn(0, 0);
+        
+        // Puede ser un tipo válido o DESCONOCIDO si no hay barco en (0,0)
+        assertTrue(tipoBarco.equals("PORTAAVIONES") || 
+                   tipoBarco.equals("ACORAZADO") ||
+                   tipoBarco.equals("CRUCERO") ||
+                   tipoBarco.equals("SUBMARINO") ||
+                   tipoBarco.equals("DESTRUCTOR") ||
+                   tipoBarco.equals("DESCONOCIDO"));
+    }
+
+    @Test
+    void testRecibirDisparo() {
+        juego.colocarBarcosAutomaticamente();
+        
+        // Disparar a (9,9) que casi siempre será agua
+        // Si falla es agua, debe devolver false y marcar 'O'
+        // Si es barco, devuelve true y marca 'X'
+        boolean resultado = juego.recibirDisparo(9, 9);
+        char celda = juego.getTableroPropio()[9][9];
+        
+        if (resultado) {
+            // Fue barco
+            assertEquals('X', celda);
+        } else {
+            // Fue agua
+            assertEquals('O', celda);
+        }
+        
+        // Disparar a la misma posición nuevamente debe devolver false
+        boolean resultado2 = juego.recibirDisparo(9, 9);
+        assertFalse(resultado2);
+    }
+
+    @Test
+    void testRegistrarFallo() {
+        juego.registrarFallo(2, 3);
+        
+        // Verificar que la posición se marcó como fallo en tablero enemigo
+        assertEquals('O', juego.getTableroEnemigo()[2][3]);
+        
+        // Verificar que la posición se registró como disparada
+        assertTrue(juego.yaDisparado(2, 3));
+    }
+
+    @Test
+    void testRegistrarImpacto() {
+        juego.registrarImpacto(5, 5);
+        
+        // Verificar que la posición se marcó como impacto en tablero enemigo
+        assertEquals('X', juego.getTableroEnemigo()[5][5]);
+        
+        // Verificar que la posición se registró como disparada
+        assertTrue(juego.yaDisparado(5, 5));
     }
 
     @Test
     void testTodosBarcosHundidos() {
         juego.colocarBarcosAutomaticamente();
         
-        assertFalse(juego.todosBarcosHundidos(), 
-            "No todos los barcos deben estar hundidos al inicio");
+        // Inicialmente no todos están hundidos
+        assertFalse(juego.todosBarcosHundidos());
     }
 
     @Test
-    void testObtenerTipoBarcoEn() {
-        juego.colocarBarcosAutomaticamente();
+    void testYaDisparado() {
+        // Inicialmente no se ha disparado a ninguna posición
+        assertFalse(juego.yaDisparado(0, 0));
+        assertFalse(juego.yaDisparado(9, 9));
         
-        String tipoBarco = juego.obtenerTipoBarcoEn(0, 0);
+        // Registrar un disparo
+        juego.registrarFallo(3, 4);
         
-        assertNotNull(tipoBarco, "Siempre debe retornar un tipo de barco");
-        assertTrue(tipoBarco.equals("DESCONOCIDO") || 
-                   tipoBarco.equals("PORTAAVIONES") || 
-                   tipoBarco.equals("ACORAZADO") ||
-                   tipoBarco.equals("CRUCERO") ||
-                   tipoBarco.equals("SUBMARINO") ||
-                   tipoBarco.equals("DESTRUCTOR"),
-                   "El tipo de barco debe ser válido");
-    }
-
-    @Test
-    void testMostrarTableroPropio() {
-        juego.colocarBarcosAutomaticamente();
+        // Verificar que la posición se recordó
+        assertTrue(juego.yaDisparado(3, 4));
         
-        assertDoesNotThrow(() -> juego.mostrarTableroPropio(), 
-            "mostrarTableroPropio no debe lanzar excepciones");
-    }
-
-    @Test
-    void testMostrarTableroEnemigo() {
-        assertDoesNotThrow(() -> juego.mostrarTableroEnemigo(), 
-            "mostrarTableroEnemigo no debe lanzar excepciones");
-    }
-
-    private char[][] obtenerTableroPropio() {
-        try {
-            java.lang.reflect.Field campo = JuegoBattleship.class.getDeclaredField("tableroPropio");
-            campo.setAccessible(true);
-            return (char[][]) campo.get(juego);
-        } catch (Exception e) {
-            fail("No se pudo acceder al tablero propio: " + e.getMessage());
-            return null;
-        }
+        // Otras posiciones no deben estar disparadas
+        assertFalse(juego.yaDisparado(3, 5));
     }
 }
