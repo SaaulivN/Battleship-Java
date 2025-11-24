@@ -1,227 +1,230 @@
 package practica;
 
+import javax.swing.SwingUtilities;
 import java.io.IOException;
 
 public class BattleshipControlador {
     private static final int PUERTO = 12345;
-    
+
     private JuegoBattleship juego;
-    private VistaConsola vista;
+    private IVista vista; // Usamos la interfaz, no la clase concreta
     private ConexionP2P conexion;
-    
+
     private String nombreJugador;
     private boolean esServidor;
+    private boolean juegoTerminado = false;
 
-    public BattleshipControlador() {
+    // Constructor: Recibe la vista (Inyección de dependencias)
+    public BattleshipControlador(IVista vista) {
+        this.vista = vista;
         this.juego = new JuegoBattleship();
-        this.vista = new VistaConsola();
         this.conexion = new ConexionP2P();
+        
+        // Enlazar el controlador a la vista para que los botones funcionen
+        this.vista.setControlador(this);
     }
 
     public void iniciar() {
-        vista.mostrarBienvenida();
-        this.nombreJugador = vista.obtenerNombreJugador();
+        vista.mostrar();
+        
+        // Ejecutamos la lógica de conexión en un hilo aparte para no congelar la ventana al inicio
+        new Thread(() -> {
+            nombreJugador = vista.obtenerNombreJugador();
+            if (nombreJugador == null || nombreJugador.isEmpty()) nombreJugador = "Jugador";
 
-        if (elegirModoConexion()) {
-            try {
-                intercambiarNombres();
-                iniciarJuego();
-            } catch (IOException e) {
-                vista.mostrarError("Error de conexión principal: " + e.getMessage());
-            } finally {
-                conexion.cerrar();
+            int modo = vista.elegirModoJuego(); // 1 = Servidor, 2 = Cliente
+            esServidor = (modo == 1);
+
+            boolean conectado = establecerConexion();
+
+            if (conectado) {
+                try {
+                    intercambiarNombres();
+                    configurarJuego();
+                    jugar();
+                } catch (IOException e) {
+                    vista.mostrarError("Error durante el juego: " + e.getMessage());
+                }
+            } else {
+                vista.mostrarError("No se pudo establecer la conexión.");
                 vista.cerrar();
             }
-        }
+        }).start();
     }
 
-    private boolean elegirModoConexion() {
-        int modo = vista.elegirModo();
-        esServidor = (modo == 1);
-        
-        while (true) {
-            try {
-                if (esServidor) {
-                    vista.mostrarMensaje("\nIniciando servidor en puerto " + PUERTO + "...");
-                    vista.mostrarMensaje("Esperando conexión de otro jugador...");
-                    conexion.esperarConexion(PUERTO);
-                    vista.mostrarMensaje("¡Jugador conectado desde: " + conexion.getDireccionRemota() + "!");
-                } else {
-                    String ip = vista.obtenerIPServidor();
-                    vista.mostrarMensaje("Conectando a " + ip + ":" + PUERTO + "...");
-                    conexion.conectar(ip, PUERTO);
-                    vista.mostrarMensaje("¡Conectado exitosamente!");
-                }
-                return true; // Conexión exitosa
-                
-            } catch (IOException e) {
-                vista.mostrarError("Error al conectar: " + e.getMessage());
-                if (esServidor || !vista.preguntarReintento()) {
-                    return false;
-                }
+    private boolean establecerConexion() {
+        try {
+            if (esServidor) {
+                vista.mostrarMensaje("Iniciando servidor en puerto " + PUERTO + "...");
+                vista.mostrarMensaje("Esperando rival...");
+                conexion.esperarConexion(PUERTO);
+            } else {
+                String ip = vista.obtenerIPServidor();
+                vista.mostrarMensaje("Conectando a " + ip + "...");
+                conexion.conectar(ip, PUERTO);
             }
+            vista.mostrarMensaje("¡Conexión establecida!");
+            return true;
+        } catch (IOException e) {
+            vista.mostrarError("Error de conexión: " + e.getMessage());
+            return false;
         }
     }
 
     private void intercambiarNombres() throws IOException {
-        String nombreOponente;
         if (esServidor) {
-            nombreOponente = conexion.leerMensaje();
+            String nombreOponente = conexion.leerMensaje();
             conexion.enviarMensaje(nombreJugador);
+            vista.mostrarMensaje("Rival: " + nombreOponente);
         } else {
             conexion.enviarMensaje(nombreJugador);
-            nombreOponente = conexion.leerMensaje();
+            String nombreOponente = conexion.leerMensaje();
+            vista.mostrarMensaje("Rival: " + nombreOponente);
         }
-        vista.mostrarMensaje("Jugando contra: " + nombreOponente);
     }
 
-    private void iniciarJuego() throws IOException {
-        vista.mostrarMensaje("\n=== INICIANDO JUEGO ===");
-
+    private void configurarJuego() {
         juego.colocarBarcosAutomaticamente();
-        vista.mostrarMensaje("Tus barcos han sido colocados automáticamente.");
-        vista.mostrarTablero(juego.getTableroPropio(), "TU TABLERO");
-        vista.mostrarEstadoBarcos(juego.getBarcos(), juego.getImpactosPorBarco());
+        
+        // Actualizar la vista con los barcos (usando SwingUtilities para seguridad de hilos)
+        SwingUtilities.invokeLater(() -> {
+            vista.actualizarTableroPropio(juego.getTableroPropio());
+            vista.mostrarMensaje("Barcos colocados. ¡Listo para la batalla!");
+        });
+    }
 
-
-        boolean juegoActivo = true;
-        boolean miTurno = esServidor;
-
+    private void jugar() throws IOException {
+        // Sincronización inicial ("LISTO")
         conexion.enviarMensaje(ProtocoloBattleship.LISTO);
         String respuesta = conexion.leerMensaje();
         
-        if (respuesta == null) {
-            vista.mostrarError("El oponente se desconectó durante la inicialización.");
+        if (!ProtocoloBattleship.LISTO.equals(respuesta)) {
+            vista.mostrarError("Error de sincronización con el rival.");
             return;
         }
 
-        if (ProtocoloBattleship.LISTO.equals(respuesta)) {
-            vista.mostrarMensaje("¡Ambos jugadores listos! El juego comienza.");
-            
-            if (miTurno) {
-                vista.mostrarMensaje("\n¡Tú comienzas!");
-            } else {
-                vista.mostrarMensaje("\nEl oponente comienza...");
-            }
-
-            while (juegoActivo) {
-                if (miTurno) {
-                    juegoActivo = turnoLocal();
-                } else {
-                    juegoActivo = turnoRemoto();
-                }
-                
-                if(juegoActivo) {
-                    miTurno = !miTurno;
-                }
-            }
+        vista.mostrarMensaje("¡La partida ha comenzado!");
+        
+        // Decidir quién empieza
+        if (esServidor) {
+            iniciarMiTurno();
+        } else {
+            iniciarTurnoOponente();
         }
     }
 
-    private boolean turnoLocal() throws IOException {
-        vista.mostrarMensaje("\n=== TU TURNO ===");
-        vista.mostrarTablero(juego.getTableroEnemigo(), "TABLERO ENEMIGO");
+    // --- LÓGICA DE TURNOS ---
+
+    private void iniciarMiTurno() {
+        if (juegoTerminado) return;
         
-        int[] disparo = vista.obtenerDisparo(juego::yaDisparado);
-        
-        conexion.enviarMensaje(ProtocoloBattleship.construirMensajeDisparo(disparo[0], disparo[1]));
-        String respuesta = conexion.leerMensaje();
-        
-        if (respuesta == null) {
-            vista.mostrarError("El oponente se desconectó.");
-            return false;
-        }
-
-        try {
-            ProtocoloBattleship.Mensaje mensaje = ProtocoloBattleship.parsearMensaje(respuesta);
-
-            switch (mensaje.comando) {
-                case ProtocoloBattleship.IMPACTO:
-                    vista.mostrarMensaje("¡IMPACTO en (" + mensaje.x + "," + mensaje.y + ")!");
-                    juego.registrarImpacto(mensaje.x, mensaje.y);
-                    break;
-
-                case ProtocoloBattleship.FALLO:
-                    vista.mostrarMensaje("FALLO en (" + mensaje.x + "," + mensaje.y + ")");
-                    juego.registrarFallo(mensaje.x, mensaje.y);
-                    break;
-
-                case ProtocoloBattleship.HUNDIDO:
-                    vista.mostrarMensaje("¡HUNDIDO! " + mensaje.tipoBarco + " en (" + mensaje.x + "," + mensaje.y + ")");
-                    juego.registrarImpacto(mensaje.x, mensaje.y);
-                    break;
-
-                case ProtocoloBattleship.JUEGO_TERMINADO:
-                    vista.mostrarMensaje("¡FELICIDADES! ¡HAS GANADO!");
-                    return false; // Juego terminado
-
-                default:
-                    vista.mostrarError("Respuesta inesperada: " + respuesta);
-            }
-            return true;
-            
-        } catch (Exception e) {
-            vista.mostrarError("Error procesando respuesta: " + e.getMessage() + ". Respuesta: " + respuesta);
-            return false;
-        }
+        SwingUtilities.invokeLater(() -> {
+            vista.setPuedeDisparar(true); // Habilita los botones
+        });
     }
 
-   private boolean turnoRemoto() throws IOException {
-        vista.mostrarMensaje("\n=== TURNO DEL OPONENTE ===");
-        vista.mostrarMensaje("Esperando disparo del oponente...");
-        
-        String mensajeEntrante = conexion.leerMensaje();
-        
-        if (mensajeEntrante == null) {
-            vista.mostrarError("El oponente se desconectó.");
-            return false;
-        }
-        
-        try {
-            ProtocoloBattleship.Mensaje mensaje = ProtocoloBattleship.parsearMensaje(mensajeEntrante);
-            
-            if (ProtocoloBattleship.DISPARAR.equals(mensaje.comando)) {
-                boolean impacto = juego.recibirDisparo(mensaje.x, mensaje.y);
+    // Este método es llamado por la VISTA cuando se hace clic en un botón
+    public void procesarDisparo(int fila, int columna) {
+        // Ejecutar en un hilo para no congelar la UI mientras esperamos respuesta
+        new Thread(() -> {
+            try {
+                // 1. Enviar disparo
+                conexion.enviarMensaje(ProtocoloBattleship.construirMensajeDisparo(fila, columna));
                 
-                if (impacto) {
-                    String tipoBarco = juego.obtenerTipoBarcoEn(mensaje.x, mensaje.y);
-                    
-                    if (!"DESCONOCIDO".equals(tipoBarco) && juego.estaBarcoHundido(tipoBarco)) {
+                // 2. Esperar resultado (IMPACTO, AGUA, HUNDIDO)
+                String respuesta = conexion.leerMensaje();
+                ProtocoloBattleship.Mensaje msg = ProtocoloBattleship.parsearMensaje(respuesta);
+
+                // 3. Procesar resultado
+                SwingUtilities.invokeLater(() -> {
+                    if (msg.comando.equals(ProtocoloBattleship.IMPACTO) || msg.comando.equals(ProtocoloBattleship.HUNDIDO)) {
+                        vista.mostrarMensaje("¡IMPACTO en (" + fila + "," + columna + ")!");
+                        juego.registrarImpacto(fila, columna);
+                        if (msg.comando.equals(ProtocoloBattleship.HUNDIDO)) {
+                            vista.mostrarMensaje("¡Has HUNDIDO un barco enemigo!");
+                        }
+                    } else if (msg.comando.equals(ProtocoloBattleship.FALLO)) {
+                        vista.mostrarMensaje("Agua en (" + fila + "," + columna + ").");
+                        juego.registrarFallo(fila, columna);
+                    } else if (msg.comando.equals(ProtocoloBattleship.JUEGO_TERMINADO)) {
+                        vista.mostrarMensaje("¡HAS GANADO LA PARTIDA!");
+                        juegoTerminado = true;
+                        juego.registrarImpacto(fila, columna); // Marcar el último golpe
+                        vista.actualizarTableroEnemigo(juego.getTableroEnemigo());
+                        return; // Fin del juego
+                    }
+
+                    vista.actualizarTableroEnemigo(juego.getTableroEnemigo());
+                    vista.setPuedeDisparar(false); // Fin de mi turno
+                });
+
+                if (!juegoTerminado) {
+                    iniciarTurnoOponente();
+                }
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                vista.mostrarError("Error procesando disparo: " + e.getMessage());
+            }
+        }).start();
+    }
+
+    private void iniciarTurnoOponente() {
+        if (juegoTerminado) return;
+
+        SwingUtilities.invokeLater(() -> vista.setPuedeDisparar(false));
+
+        // Escuchar al oponente en un hilo secundario (bloqueante)
+        new Thread(() -> {
+            try {
+                String mensajeEntrante = conexion.leerMensaje();
+                if (mensajeEntrante == null) return;
+
+                ProtocoloBattleship.Mensaje msg = ProtocoloBattleship.parsearMensaje(mensajeEntrante);
+
+                if (ProtocoloBattleship.DISPARAR.equals(msg.comando)) {
+                    // Calcular impacto en MI tablero logicamente
+                    boolean impacto = juego.recibirDisparo(msg.x, msg.y);
+                    String respuesta;
+
+                    if (impacto) {
+                        String tipoBarco = juego.obtenerTipoBarcoEn(msg.x, msg.y);
                         
                         if (juego.todosBarcosHundidos()) {
-                            conexion.enviarMensaje(ProtocoloBattleship.JUEGO_TERMINADO);
-                            vista.mostrarError("El oponente hundió tu " + tipoBarco);
-                            vista.mostrarError("¡HAS PERDIDO!");
-                            return false;
+                            respuesta = ProtocoloBattleship.JUEGO_TERMINADO;
+                            juegoTerminado = true;
+                            SwingUtilities.invokeLater(() -> {
+                                vista.mostrarError("¡TE HAN DERROTADO! Tu flota ha sido destruida.");
+                            });
+                        } else if (juego.estaBarcoHundido(tipoBarco)) {
+                             respuesta = ProtocoloBattleship.construirMensajeResultado(
+                                    ProtocoloBattleship.HUNDIDO, msg.x, msg.y, tipoBarco);
+                             SwingUtilities.invokeLater(() -> vista.mostrarMensaje("¡El enemigo hundió tu " + tipoBarco + "!"));
                         } else {
-                            conexion.enviarMensaje(ProtocoloBattleship.construirMensajeResultado(
-                                ProtocoloBattleship.HUNDIDO, mensaje.x, mensaje.y, tipoBarco));
-                            vista.mostrarMensaje("El oponente hundió tu " + tipoBarco + " en (" + mensaje.x + "," + mensaje.y + ")");
+                            respuesta = ProtocoloBattleship.construirMensajeResultado(
+                                    ProtocoloBattleship.IMPACTO, msg.x, msg.y, null);
+                            SwingUtilities.invokeLater(() -> vista.mostrarMensaje("¡Te han dado en (" + msg.x + "," + msg.y + ")!"));
                         }
                     } else {
-                        conexion.enviarMensaje(ProtocoloBattleship.construirMensajeResultado(
-                            ProtocoloBattleship.IMPACTO, mensaje.x, mensaje.y, null));
-                        vista.mostrarMensaje("El oponente impactó en (" + mensaje.x + "," + mensaje.y + ")");
+                        respuesta = ProtocoloBattleship.construirMensajeResultado(
+                                ProtocoloBattleship.FALLO, msg.x, msg.y, null);
+                        SwingUtilities.invokeLater(() -> vista.mostrarMensaje("El enemigo falló el disparo."));
                     }
-                } else {
-                    conexion.enviarMensaje(ProtocoloBattleship.construirMensajeResultado(
-                        ProtocoloBattleship.FALLO, mensaje.x, mensaje.y, null));
-                    vista.mostrarMensaje("El oponente falló en (" + mensaje.x + "," + mensaje.y + ")");
-                }
-            }
-            
-            vista.mostrarTablero(juego.getTableroPropio(), "TU TABLERO (ACTUALIZADO)");
-            vista.mostrarEstadoBarcos(juego.getBarcos(), juego.getImpactosPorBarco());
-            return true;
-            
-        } catch (Exception e) {
-            vista.mostrarError("Error procesando mensaje del oponente: " + e.getMessage());
-            return false;
-        }
-    }
 
-    public static void main(String[] args) {
-        BattleshipControlador controlador = new BattleshipControlador();
-        controlador.iniciar();
+                    // Enviar respuesta al oponente
+                    conexion.enviarMensaje(respuesta);
+
+                    // Actualizar MI tablero visualmente
+                    SwingUtilities.invokeLater(() -> vista.actualizarTableroPropio(juego.getTableroPropio()));
+
+                    // Si no perdí, ahora es mi turno
+                    if (!juegoTerminado) {
+                        iniciarMiTurno();
+                    }
+                }
+            } catch (IOException e) {
+                vista.mostrarError("Error en turno oponente: " + e.getMessage());
+            }
+        }).start();
     }
 }
